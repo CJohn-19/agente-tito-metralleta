@@ -372,8 +372,9 @@ export default function IdeasPage() {
             <strong>No se pudo escanear.</strong>
             <p>{error}</p>
             <p className="muted">
-              Si menciona la sesión de MarketSnack, hay que refrescar
-              <code> MARKETSNACK_COOKIE</code> en <code>web/.env.local</code>.
+              Si menciona la auth de MarketSnack, hay que actualizar
+              <code> MARKETSNACK_TOKEN</code> (o la cookie <code>MARKETSNACK_COOKIE</code>)
+              en <code>web/.env.local</code>.
             </p>
           </section>
         )}

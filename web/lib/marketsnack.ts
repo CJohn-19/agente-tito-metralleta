@@ -1,5 +1,6 @@
 // Cliente del API interno de MarketSnack (app.marketsnack.com). Solo servidor.
-// Auth por cookie de sesión (MARKETSNACK_COOKIE en .env.local). Ver SCOREDCARD/Scoredcard.md.
+// Auth: prefiere un token de servidor de larga vida (MARKETSNACK_TOKEN, Bearer) y cae a la
+// cookie de sesión (MARKETSNACK_COOKIE) si no hay token. Ver docs/marketsnack-token.md.
 
 import type { RawTrade } from "./flow";
 
@@ -14,14 +15,22 @@ export class MarketSnackError extends Error {
   }
 }
 
-function cookie(): string {
-  const c = process.env.MARKETSNACK_COOKIE;
-  if (!c || !c.trim()) {
-    throw new MarketSnackError(
-      "Falta MARKETSNACK_COOKIE en .env.local. Copia tu cookie de sesión de app.marketsnack.com.",
-    );
-  }
-  return c.trim();
+/**
+ * Cabeceras de autenticación. Prefiere el token de servidor de larga vida
+ * (MARKETSNACK_TOKEN → Authorization: Bearer); si no hay, cae a la cookie de sesión
+ * (MARKETSNACK_COOKIE), que caduca. Ver docs/marketsnack-token.md.
+ */
+function authHeaders(): Record<string, string> {
+  const token = process.env.MARKETSNACK_TOKEN?.trim();
+  if (token) return { Authorization: `Bearer ${token}` };
+
+  const c = process.env.MARKETSNACK_COOKIE?.trim();
+  if (c) return { Cookie: c };
+
+  throw new MarketSnackError(
+    "Falta MARKETSNACK_TOKEN (recomendado) o MARKETSNACK_COOKIE en .env.local. " +
+      "Ver docs/marketsnack-token.md.",
+  );
 }
 
 export interface FetchFlowOptions {
@@ -68,7 +77,7 @@ async function paginate(
   const clean = symbol;
   const period = opts.period ?? "5d";
   const maxPages = opts.maxPages ?? 10;
-  const cookieHeader = cookie();
+  const authHeader = authHeaders();
 
   const trades: RawTrade[] = [];
   let token: string | null = null;
@@ -91,15 +100,16 @@ async function paginate(
     const url = `${BASE_URL}/api/flow_feed?${params.toString()}`;
 
     const res = await fetch(url, {
-      headers: { Accept: "application/json", Cookie: cookieHeader },
+      headers: { Accept: "application/json", ...authHeader },
       cache: "no-store",
       redirect: "manual",
     });
 
-    // Sesión inválida/expirada → MarketSnack redirige a /login o responde 401.
+    // Auth inválida/expirada → MarketSnack redirige a /login o responde 401/403.
     if (res.status === 401 || res.status === 403 || (res.status >= 300 && res.status < 400)) {
       throw new MarketSnackError(
-        "Sesión de MarketSnack inválida o expirada. Actualiza MARKETSNACK_COOKIE en .env.local.",
+        "Auth de MarketSnack inválida o expirada. Actualiza MARKETSNACK_TOKEN " +
+          "(o la cookie MARKETSNACK_COOKIE) en .env.local. Ver docs/marketsnack-token.md.",
         res.status,
       );
     }
